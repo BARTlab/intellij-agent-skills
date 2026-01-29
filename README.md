@@ -1,6 +1,6 @@
 # Agent Skills Manager
 
-[![JetBrains Plugins](https://img.shields.io/jetbrains/plugin/v/24680-agent-skills-manager?style=flat-square)](https://plugins.jetbrains.com/plugin/24680-agent-skills-manager)
+[![JetBrains Plugins](https://img.shields.io/jetbrains/plugin/v/29975-agent-skills-manager?style=flat-square)](https://plugins.jetbrains.com/plugin/29975-agent-skills-manager)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-orange?style=flat-square&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/bartlab)
 
