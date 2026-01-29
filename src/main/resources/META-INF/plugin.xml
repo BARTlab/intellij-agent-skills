@@ -3,6 +3,28 @@
     <name>Agent Skills Manager</name>
     <vendor>B@RT</vendor>
 
+    <description><![CDATA[
+      <b>Agent Skills Manager</b> is an IntelliJ IDEA plugin that transforms your development environment into a powerful "skills" server for AI assistants. It allows you to export toolsets, instructions, and project context to external AI tools via the <b>Model Context Protocol (MCP)</b>.
+
+      <h3>Key Features:</h3>
+      <ul>
+        <li><b>MCP Server (SSE):</b> Built-in server supporting connections via Server-Sent Events. No need to run additional terminal processes.</li>
+        <li><b>Smart Scanning:</b> Automatically finds skills in folders like .agents/skills, .claude/skills, .cursor/skills, .roo/skills, and many others (supports 25+ popular AI agents).</li>
+        <li><b>Skill Manager:</b> Install ready-to-use toolsets from external repositories (e.g., GitHub) or create your own directly in the IDE.</li>
+        <li><b>Auto-update:</b> Keep your skills up to date by updating them from source repositories with a single click.</li>
+        <li><b>Visibility Control:</b> Choose exactly which skills are available to the assistant in the current session ("Auto" and "Selected Only" modes).</li>
+      </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+      Initial release of Agent Skills Manager.
+      <ul>
+        <li>Implemented MCP Server (SSE) support.</li>
+        <li>Added automatic skill scanning.</li>
+        <li>Implemented Skill Manager for GitHub repositories.</li>
+      </ul>
+    ]]></change-notes>
+
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
