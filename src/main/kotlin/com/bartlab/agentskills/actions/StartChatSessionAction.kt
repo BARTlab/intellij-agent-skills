@@ -10,7 +10,7 @@ import com.bartlab.agentskills.service.SkillPromptXmlService
 import com.bartlab.agentskills.settings.SkillSettingsState
 import com.bartlab.agentskills.util.AgentSkillsNotifier
 import java.awt.datatransfer.StringSelection
-import java.util.*
+import java.util.UUID
 
 class StartChatSessionAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
@@ -26,8 +26,7 @@ class StartChatSessionAction : AnAction() {
             project = project,
             skills = skills,
             initialMode = settings.exposureMode,
-            initialSelectedNames = settings.selectedSkillNames.toSet(),
-            scanner = scanner
+            initialSelectedNames = settings.selectedSkillNames.toSet()
         )
 
         if (!dialog.showAndGet()) return
@@ -52,7 +51,7 @@ class StartChatSessionAction : AnAction() {
         val promptService = project.getService(SkillPromptXmlService::class.java)
         val skillsXml = promptService?.buildAvailableSkillsXml(visibleSkills, includeLocation = false) ?: ""
 
-        val preset = buildPreset(sessionKey, mode, selected, skillsXml)
+        val preset = buildPreset(sessionKey, skillsXml)
         CopyPasteManager.getInstance().setContents(StringSelection(preset))
 
         AgentSkillsNotifier.notify(
@@ -63,10 +62,9 @@ class StartChatSessionAction : AnAction() {
         )
     }
 
+    @Suppress("SpellCheckingInspection")
     private fun buildPreset(
         sessionKey: String,
-        mode: SkillSettingsState.SkillExposureMode,
-        selected: List<String>,
         skillsXml: String
     ): String {
         val sb = StringBuilder()

@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.bartlab.agentskills.mcp.SkillMcpServerService
 import com.bartlab.agentskills.settings.SkillSettingsState
+import com.intellij.openapi.application.ApplicationManager
 
 class SkillScannerStartupActivity : ProjectActivity {
     private val log = Logger.getInstance(SkillScannerStartupActivity::class.java)
@@ -22,6 +23,8 @@ class SkillScannerStartupActivity : ProjectActivity {
             mcpServer.stop()
         }
 
-        scanner.scan()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            scanner.scan()
+        }
     }
 }
