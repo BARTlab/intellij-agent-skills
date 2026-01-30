@@ -44,8 +44,8 @@
     <actions>
         <action id="AgentSkills.StartChatSession"
                 class="com.bartlab.agentskills.actions.StartChatSessionAction"
-                text="Agent Skills List"
-                description="List of available skills, generate MCP preset to clipboard">
+                text="Agent Skills Manager"
+                description="Manage of available skills, generate MCP preset to clipboard">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>
