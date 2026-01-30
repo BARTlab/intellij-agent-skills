@@ -11,14 +11,12 @@ import com.bartlab.agentskills.service.SkillScannerService
 import com.bartlab.agentskills.settings.SkillSettingsState
 import com.bartlab.agentskills.ui.AgentSkillsTableComponent
 import javax.swing.JComponent
-import javax.swing.JPanel
 
 class StartChatSessionDialog(
     project: Project,
-    private val skills: List<AgentSkill>,
+    skills: List<AgentSkill>,
     initialMode: SkillSettingsState.SkillExposureMode,
-    private val initialSelectedNames: Set<String>,
-    private val scanner: SkillScannerService? = null
+    initialSelectedNames: Set<String>
 ) : DialogWrapper(project) {
 
     private val modeCombo = ComboBox(
@@ -45,7 +43,7 @@ class StartChatSessionDialog(
         title = "Start Agent Skills Chat Session"
         setOKButtonText("Copy Prompt")
         setCancelButtonText("Close")
-        
+
         skillsTable.setData(skills, initialSelectedNames)
         skillsTable.setCheckboxesEnabled(initialMode == SkillSettingsState.SkillExposureMode.SELECTED_ONLY_METADATA)
 
@@ -82,6 +80,11 @@ class StartChatSessionDialog(
             preferredSize = JBUI.size(900, 500)
             border = JBUI.Borders.empty(10)
         }
+    }
+
+    override fun dispose() {
+        skillsTable.dispose()
+        super.dispose()
     }
 
     private data class ExposureModeItem(

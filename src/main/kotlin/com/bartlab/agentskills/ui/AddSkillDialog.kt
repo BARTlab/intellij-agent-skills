@@ -17,14 +17,16 @@ import com.intellij.ui.layout.ComponentPredicate
 import com.intellij.util.ui.JBUI
 import com.bartlab.agentskills.service.SkillScannerService
 import java.awt.BorderLayout
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.table.TableCellRenderer
 
-class AddSkillDialog(private val project: Project) : DialogWrapper(project) {
+class AddSkillDialog(project: Project) : DialogWrapper(project) {
     enum class Mode { INSTALL, INIT }
 
-    private val modeComboBox = ComboBox(Mode.values())
+    private val modeComboBox = ComboBox(Mode.entries.toTypedArray())
     private val sourceField = ExtendableTextField().apply {
         emptyText.text = "vercel-labs/agent-skills or https://github.com/owner/repo"
         addExtension(ExtendableTextComponent.Extension.create(
@@ -89,9 +91,7 @@ class AddSkillDialog(private val project: Project) : DialogWrapper(project) {
                 val table = JBTable(agentsTableModel).apply {
                     fillsViewportHeight = true
                     val checkCol = columnModel.getColumn(0)
-                    checkCol.preferredWidth = JBUI.scale(40)
-                    checkCol.maxWidth = JBUI.scale(40)
-                    checkCol.minWidth = JBUI.scale(40)
+                    setFixedColumnWidth(checkCol, JBUI.scale(40))
                     checkCol.headerRenderer = TableCellRenderer { t, _, _, _, _, _ ->
                         val cb = JBCheckBox("", agentsTableModel.isAllSelected())
                         cb.isOpaque = false
@@ -99,10 +99,12 @@ class AddSkillDialog(private val project: Project) : DialogWrapper(project) {
                         panel.add(cb, BorderLayout.CENTER)
                         panel.background = t.tableHeader.background
                         panel.border = JBUI.Borders.empty(0, 2)
+                        panel.accessibleContext?.accessibleName = "Select all agents"
+                        panel.accessibleContext?.accessibleDescription = "Toggle selection for all agents"
                         panel
                     }
-                    tableHeader.addMouseListener(object : java.awt.event.MouseAdapter() {
-                        override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                    tableHeader.addMouseListener(object : MouseAdapter() {
+                        override fun mouseClicked(e: MouseEvent) {
                             val col = columnAtPoint(e.point)
                             if (col == 0) {
                                 agentsTableModel.selectAll(!agentsTableModel.isAllSelected())
@@ -126,6 +128,12 @@ class AddSkillDialog(private val project: Project) : DialogWrapper(project) {
     fun getSelectedAgents(): List<String> = agentsTableModel.selectedAgents.toList()
     fun shouldCreateSymlinks(): Boolean = createSymlinksCheckbox.isSelected
     fun isGlobalInstall(): Boolean = globalInstallCheckbox.isSelected
+
+    private fun setFixedColumnWidth(column: javax.swing.table.TableColumn, width: Int) {
+        column.minWidth = width
+        column.maxWidth = width
+        column.preferredWidth = width
+    }
 
     private class AgentsTableModel(val agents: List<SkillScannerService.AgentPath>) : AbstractTableModel() {
         val selectedAgents = mutableSetOf<String>()

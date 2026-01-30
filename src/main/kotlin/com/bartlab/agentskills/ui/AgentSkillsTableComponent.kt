@@ -1,11 +1,11 @@
 package com.bartlab.agentskills.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.ActionToolbarPosition
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Presentation
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
@@ -13,23 +13,24 @@ import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
-import com.intellij.ui.LayeredIcon
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLoadingPanel
 import com.intellij.ui.table.JBTable
-import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBUI
 import com.bartlab.agentskills.model.AgentSkill
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.bartlab.agentskills.service.SkillManagerService
 import com.bartlab.agentskills.service.SkillScannerService
+import com.intellij.openapi.util.Disposer
 import java.awt.BorderLayout
 import java.awt.Component
+import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.awt.RelativePoint
@@ -37,7 +38,7 @@ import java.awt.Point
 import javax.swing.JLabel
 import javax.swing.JComponent
 import javax.swing.JPanel
-import javax.swing.Icon
+import javax.swing.JTable
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellRenderer
@@ -45,11 +46,15 @@ import javax.swing.table.TableCellRenderer
 class AgentSkillsTableComponent(
     private val project: Project,
     private val onRefresh: () -> Unit
-) {
+) : Disposable {
+    private companion object {
+        const val TOOLTIP_MAX_CHARS_PER_LINE = 80
+    }
     private val scanner = project.getService(SkillScannerService::class.java)
     private val manager = project.getService(SkillManagerService::class.java)
     private val model = SkillsTableModel(scanner)
-    private val loadingPanel = JBLoadingPanel(BorderLayout(), project)
+    private val loadingPanelDisposable = Disposer.newDisposable("AgentSkillsTableComponent")
+    private val loadingPanel = JBLoadingPanel(BorderLayout(), loadingPanelDisposable)
     private val table = object : JBTable(model) {
         override fun getToolTipText(event: MouseEvent): String? {
             val row = rowAtPoint(event.point)
@@ -66,7 +71,7 @@ class AgentSkillsTableComponent(
                 else -> return null
             }
             if (raw.isBlank()) return null
-            return toHtmlTooltip(raw, maxCharsPerLine = 80)
+            return toHtmlTooltip(raw)
         }
     }.apply {
         fillsViewportHeight = true
@@ -79,11 +84,9 @@ class AgentSkillsTableComponent(
         // "overflow:hide" for cells on hover (prevent cell expansion)
         setExpandableItemsEnabled(false)
         
-        // Настройка ширины колонки чекбоксов
+        // Configure the checkbox column width.
         val checkCol = columnModel.getColumn(0)
-        checkCol.preferredWidth = JBUI.scale(40)
-        checkCol.maxWidth = JBUI.scale(40)
-        checkCol.minWidth = JBUI.scale(40)
+        setFixedColumnWidth(checkCol, JBUI.scale(40))
         checkCol.headerRenderer = TableCellRenderer { t, _, _, _, _, _ ->
             val cb = JBCheckBox("", this@AgentSkillsTableComponent.model.isAllSelected())
             cb.isOpaque = false
@@ -92,10 +95,12 @@ class AgentSkillsTableComponent(
             panel.add(cb, BorderLayout.CENTER)
             panel.background = t.tableHeader.background
             panel.border = JBUI.Borders.empty(0, 2)
+            panel.accessibleContext?.accessibleName = "Select all skills"
+            panel.accessibleContext?.accessibleDescription = "Toggle selection for all listed skills"
             panel
         }
-        tableHeader.addMouseListener(object : java.awt.event.MouseAdapter() {
-            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+        tableHeader.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
                 if (!this@AgentSkillsTableComponent.model.isCheckboxesEnabled()) return
                 val col = columnAtPoint(e.point)
                 if (col == 0) {
@@ -105,7 +110,7 @@ class AgentSkillsTableComponent(
             }
         })
 
-        // Version column - make it narrower and add loader
+        // Version column - make it narrower and add a loader
         val versionCol = columnModel.getColumn(2)
         versionCol.preferredWidth = JBUI.scale(80)
         versionCol.maxWidth = JBUI.scale(120)
@@ -115,6 +120,8 @@ class AgentSkillsTableComponent(
             val label = JLabel(value?.toString() ?: "")
             label.foreground = if (isSelected) t.selectionForeground else t.foreground
             panel.add(label, BorderLayout.CENTER)
+            panel.accessibleContext?.accessibleName = "Skill version"
+            panel.accessibleContext?.accessibleDescription = value?.toString()
             
             val modelIndex = t.convertRowIndexToModel(row)
             val skillName = this@AgentSkillsTableComponent.model.getRow(modelIndex)?.name ?: ""
@@ -125,7 +132,7 @@ class AgentSkillsTableComponent(
             panel
         }
 
-        // Рендерер для чекбоксов, чтобы они были disabled, а не просто readonly
+        // Render checkboxes as disabled rather than read-only.
         val booleanRenderer = getDefaultRenderer(java.lang.Boolean::class.java)
         checkCol.cellRenderer = TableCellRenderer { t, value, isSelected, hasFocus, row, column ->
             val c = booleanRenderer.getTableCellRendererComponent(t, value, isSelected, hasFocus, row, column)
@@ -135,14 +142,14 @@ class AgentSkillsTableComponent(
             c
         }
         
-        // Ограничение ширины остальных колонок и использование рендерера для overflow
+        // Limit the remaining column widths and use renderer for overflow.
         val defaultRenderer = object : DefaultTableCellRenderer() {
             override fun getTableCellRendererComponent(
-                table: javax.swing.JTable?, value: Any?,
+                table: JTable?, value: Any?,
                 isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
             ): Component {
                 val c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-                if (c is javax.swing.JLabel) {
+                if (c is JLabel) {
                     c.toolTipText = value?.toString()
                 }
                 return c
@@ -175,12 +182,21 @@ class AgentSkillsTableComponent(
                 } else {
                     loadingPanel.setLoadingText("Initializing skill ${dialog.getSkillName()}...")
                     loadingPanel.startLoading()
-                    try {
-                        manager.initSkill(dialog.getSkillName(), dialog.getSelectedAgents(), dialog.shouldCreateSymlinks(), dialog.isGlobalInstall())
-                    } finally {
-                        loadingPanel.stopLoading()
-                        onRefresh()
-                    }
+                    ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Initializing skill ${dialog.getSkillName()}") {
+                        override fun run(indicator: ProgressIndicator) {
+                            manager.initSkill(
+                                dialog.getSkillName(),
+                                dialog.getSelectedAgents(),
+                                dialog.shouldCreateSymlinks(),
+                                dialog.isGlobalInstall()
+                            )
+                        }
+
+                        override fun onFinished() {
+                            loadingPanel.stopLoading()
+                            onRefresh()
+                        }
+                    })
                 }
             }
         }
@@ -226,9 +242,11 @@ class AgentSkillsTableComponent(
                     override fun update(ev: AnActionEvent) {
                         ev.presentation.isEnabled = table.selectedRow >= 0
                     }
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
                 })
                 add(object : AnAction("All") {
                     override fun actionPerformed(e: AnActionEvent) = updateAll()
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
                 })
             }
 
@@ -248,6 +266,7 @@ class AgentSkillsTableComponent(
             override fun actionPerformed(e: AnActionEvent) {
                 onRefresh()
             }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         })
         .addExtraAction(object : AnAction("Edit Skill", "Open SKILL.md for editing", AllIcons.Actions.Edit) {
             override fun actionPerformed(e: AnActionEvent) {
@@ -266,6 +285,7 @@ class AgentSkillsTableComponent(
             override fun update(e: AnActionEvent) {
                 e.presentation.isEnabled = table.selectedRow >= 0
             }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         })
 
     private fun updateSelected() {
@@ -317,6 +337,10 @@ class AgentSkillsTableComponent(
         return loadingPanel
     }
 
+    override fun dispose() {
+        Disposer.dispose(loadingPanelDisposable)
+    }
+
     fun setData(skills: List<AgentSkill>, selectedNames: Set<String>) {
         model.setData(skills, selectedNames)
     }
@@ -325,9 +349,7 @@ class AgentSkillsTableComponent(
         model.setCheckboxesEnabled(enabled)
         val column = table.columnModel.getColumn(0)
         if (enabled) {
-            column.minWidth = JBUI.scale(30)
-            column.maxWidth = JBUI.scale(30)
-            column.preferredWidth = JBUI.scale(30)
+            setFixedColumnWidth(column, JBUI.scale(30))
         } else {
             column.minWidth = 0
             column.maxWidth = 0
@@ -337,7 +359,7 @@ class AgentSkillsTableComponent(
 
     fun getSelectedSkillNames(): List<String> = model.getSelectedSkillNames()
 
-    private fun toHtmlTooltip(text: String, maxCharsPerLine: Int): String {
+    private fun toHtmlTooltip(text: String): String {
         fun escapeHtml(s: String): String = s
             .replace("&", "&amp;")
             .replace("<", "&lt;")
@@ -354,12 +376,18 @@ class AgentSkillsTableComponent(
         val lines = buildList {
             var i = 0
             while (i < safe.length) {
-                val end = (i + maxCharsPerLine).coerceAtMost(safe.length)
+                val end = (i + TOOLTIP_MAX_CHARS_PER_LINE).coerceAtMost(safe.length)
                 add(safe.substring(i, end))
                 i = end
             }
         }
         return "<html>${lines.joinToString("<br/>")}</html>"
+    }
+
+    private fun setFixedColumnWidth(column: javax.swing.table.TableColumn, width: Int) {
+        column.minWidth = width
+        column.maxWidth = width
+        column.preferredWidth = width
     }
 
     private class SkillRow(

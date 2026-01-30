@@ -5,6 +5,9 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.TextComponentAccessor
@@ -15,7 +18,6 @@ import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.TopGap
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
 import com.bartlab.agentskills.service.SkillScannerService
 import com.bartlab.agentskills.mcp.SkillMcpServerService
 import com.bartlab.agentskills.ui.AgentSkillsTableComponent
@@ -88,10 +90,23 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
         )
         exposureModeCombo = exposure
 
+        val refreshSkills = {
+            run {
+                val scannerService = project.getService(SkillScannerService::class.java) ?: return@run
+                object : Task.Backgroundable(project, "Scanning skills", false) {
+                    override fun run(indicator: ProgressIndicator) {
+                        scannerService.scan()
+                        val skills = scannerService.getSkills()
+                        ApplicationManager.getApplication().invokeLater {
+                            skillsTable?.setData(skills, settings.state.selectedSkillNames.toSet())
+                        }
+                    }
+                }.queue()
+            }
+        }
+
         val skillsTableComponent = AgentSkillsTableComponent(project) {
-            val scanner = project.getService(SkillScannerService::class.java)
-            scanner?.scan()
-            skillsTable?.setData(scanner?.getSkills().orEmpty(), settings.state.selectedSkillNames.toSet())
+            refreshSkills()
         }
         this.skillsTable = skillsTableComponent
 
@@ -148,8 +163,7 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
             border = JBUI.Borders.empty(10)
         }
 
-        scanner?.scan()
-        skillsTableComponent.setData(scanner?.getSkills().orEmpty(), settings.state.selectedSkillNames.toSet())
+        refreshSkills()
         applyModeToUi()
 
         rootComponent = root
@@ -214,7 +228,7 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
         s.integrateAiAssistant = integrateAiAssistantCheckBox?.isSelected ?: s.integrateAiAssistant
         s.mcpPort = mcpPortField?.number ?: s.mcpPort
 
-        // Немедленно включаем/выключаем MCP сервер по галочке.
+        // Immediately enable/disable the MCP server based on the checkbox.
         project.getService(SkillMcpServerService::class.java)?.syncWithSettings()
 
         log.info("Settings: changes applied. mcpPort=${s.mcpPort}, integrateAiAssistant=${s.integrateAiAssistant}")
@@ -226,6 +240,7 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
         customPathField = null
         exposureModeCombo = null
         integrateAiAssistantCheckBox = null
+        skillsTable?.dispose()
         skillsTable = null
     }
 
