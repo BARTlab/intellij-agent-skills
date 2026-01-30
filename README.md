@@ -1,7 +1,7 @@
 # Agent Skills Manager
 
 [![JetBrains Plugins](https://img.shields.io/jetbrains/plugin/v/29975-agent-skills-manager?style=flat-square)](https://plugins.jetbrains.com/plugin/29975-agent-skills-manager)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-orange?style=flat-square&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/bartlab)
 
 **Agent Skills Manager** is an IntelliJ IDEA plugin that transforms your development environment into a powerful "skills" server for AI assistants. It allows you to export toolsets, instructions, and project context to external AI tools via the **Model Context Protocol (MCP)**.
@@ -57,11 +57,46 @@ In the IDE menu, select **Tools → Agent Skills List**. This opens a list of av
 The plugin supports several ways to manage skills:
 
 1. **Automatic:** Create a `.agents/skills/my-skill/SKILL.md` file in your project root. The plugin will detect it instantly.
-2. **Install from GitHub:** In settings, click the **+** (Add) button, select **INSTALL** mode, and provide the repository URL or shorthand (e.g., `owner/repo`).
-3. **Initialize:** Select **INIT** mode in the add window to create a new skill from a template.
+2. **Install from GitHub:** In settings, click the **+** (Add) button, select **Install** mode, and provide the repository URL or shorthand (e.g., `owner/repo`).
+3. **Initialize:** Select **Init** mode in the added window to create a new skill from a template.
+
+### ✅ Supported Agents & Skill Paths
+When **Auto** search is enabled (default), the plugin scans both **project-level** and **global** skill directories for each supported agent. This means skills can be discovered either inside the current project or from your user profile.
+
+| Agent | Project path | Global path |
+| --- | --- | --- |
+| Amp | `.agents/skills` | `~/.config/agents/skills` |
+| Antigravity | `.agent/skills` | `~/.gemini/antigravity/global_skills` |
+| Claude Code | `.claude/skills` | `~/.claude/skills` |
+| Clawdbot | `skills` | `~/.clawdbot/skills` |
+| Cline | `.cline/skills` | `~/.cline/skills` |
+| Codex | `.codex/skills` | `~/.codex/skills` |
+| Command Code | `.commandcode/skills` | `~/.commandcode/skills` |
+| Continue | `.continue/skills` | `~/.continue/skills` |
+| Crush | `.crush/skills` | `~/.config/crush/skills` |
+| Cursor | `.cursor/skills` | `~/.cursor/skills` |
+| Droid | `.factory/skills` | `~/.factory/skills` |
+| Gemini CLI | `.gemini/skills` | `~/.gemini/skills` |
+| GitHub Copilot | `.github/skills` | `~/.copilot/skills` |
+| Goose | `.goose/skills` | `~/.config/goose/skills` |
+| Kilo Code | `.kilocode/skills` | `~/.kilocode/skills` |
+| Kiro CLI | `.kiro/skills` | `~/.kiro/skills` |
+| MCPJam | `.mcpjam/skills` | `~/.mcpjam/skills` |
+| OpenCode | `.opencode/skills` | `~/.config/opencode/skills` |
+| OpenHands | `.openhands/skills` | `~/.openhands/skills` |
+| Pi | `.pi/skills` | `~/.pi/skills` |
+| Qoder | `.qoder/skills` | `~/.qoder/skills` |
+| Qwen Code | `.qwen/skills` | `~/.qwen/skills` |
+| Roo Code | `.roo/skills` | `~/.roo/skills` |
+| Trae | `.trae/skills` | `~/.trae/skills` |
+| Windsurf | `.windsurf/skills` | `~/.codeium/windsurf/skills` |
+| Zencoder | `.zencoder/skills` | `~/.zencoder/skills` |
+| Neovate | `.neovate/skills` | `~/.neovate/skills` |
+
+If **Skill search directory** is enabled in settings, the plugin scans only that custom path and skips the default project/global locations above.
 
 ### 🔍 Finding Skills
-You can find a directory of community-contributed skills at [**skills.sh**](https://skills.sh/). Simply copy the repository URL and use the **INSTALL** feature to add them to your project.
+You can find a directory of community-contributed skills at [**skills.sh**](https://skills.sh/). Copy the repository URL and use the **Installation** feature to add them to your project.
 
 ### SKILL.md Format
 A skill is a Markdown file with a YAML frontmatter:
@@ -89,6 +124,32 @@ The assistant gains access to the following tools:
 
 ### Security
 You have full control over what data is shared with the assistant. Use the **Selected Only** mode in settings to restrict access to verified skills only.
+
+---
+
+## 🧪 Build, Test, and Install (Local)
+
+### Build the plugin
+```bash
+./gradlew buildPlugin
+```
+
+### Run tests
+```bash
+./gradlew test
+```
+
+### Run the IDE with the plugin
+```bash
+./gradlew runIde
+```
+
+### Install into IDE from ZIP
+1. Build the plugin ZIP: `./gradlew buildPlugin`
+2. Open **Settings → Plugins → ⚙️ → Install Plugin from Disk...**
+3. Select the generated ZIP in `build/distributions/`
+
+> Note: the `setupDependencies` task is deprecated in the IntelliJ Platform Gradle plugin. Prefer `buildPlugin`, `runIde`, or `test`.
 
 ---
 
