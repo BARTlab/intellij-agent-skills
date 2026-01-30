@@ -6,6 +6,16 @@ import java.io.File
 import java.nio.file.Paths
 
 object SkillSourceParser {
+    private val githubTreeWithPathRegex = Regex("github\\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)")
+    private val githubTreeRegex = Regex("github\\.com/([^/]+)/([^/]+)/tree/([^/]+)$")
+    private val githubRepoRegex = Regex("github\\.com/([^/]+)/([^/]+)")
+    private val gitlabTreeWithPathRegex = Regex("gitlab\\.com/([^/]+)/([^/]+)/-/tree/([^/]+)/(.+)")
+    private val gitlabTreeRegex = Regex("gitlab\\.com/([^/]+)/([^/]+)/-/tree/([^/]+)$")
+    private val gitlabRepoRegex = Regex("gitlab\\.com/([^/]+)/([^/]+)")
+    private val shorthandRegex = Regex("^([^/]+)/([^/]+)(?:/(.+))?$")
+    private val windowsAbsoluteRegex = Regex("^[a-zA-Z]:[/\\\\]")
+    private val httpSchemeRegex = Regex("^https?://", RegexOption.IGNORE_CASE)
+
     fun parse(input: String): SkillSource? {
         val trimmedInput = input.trim()
         
@@ -26,8 +36,7 @@ object SkillSourceParser {
         }
         
         // GitHub
-        val githubTreeWithPath = "github\\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)".toRegex()
-        githubTreeWithPath.find(trimmedInput)?.let { match ->
+        githubTreeWithPathRegex.find(trimmedInput)?.let { match ->
             val (owner, repo, ref, subpath) = match.destructured
             return SkillSource(
                 type = SkillSourceType.GITHUB,
@@ -36,9 +45,8 @@ object SkillSourceParser {
                 subpath = subpath
             )
         }
-        
-        val githubTree = "github\\.com/([^/]+)/([^/]+)/tree/([^/]+)$".toRegex()
-        githubTree.find(trimmedInput)?.let { match ->
+
+        githubTreeRegex.find(trimmedInput)?.let { match ->
             val (owner, repo, ref) = match.destructured
             return SkillSource(
                 type = SkillSourceType.GITHUB,
@@ -46,19 +54,17 @@ object SkillSourceParser {
                 ref = ref
             )
         }
-        
-        val githubRepo = "github\\.com/([^/]+)/([^/]+)".toRegex()
-        githubRepo.find(trimmedInput)?.let { match ->
+
+        githubRepoRegex.find(trimmedInput)?.let { match ->
             val (owner, repo) = match.destructured
             return SkillSource(
                 type = SkillSourceType.GITHUB,
                 url = "https://github.com/$owner/${repo.removeSuffix(".git")}.git"
             )
         }
-        
+
         // GitLab
-        val gitlabTreeWithPath = "gitlab\\.com/([^/]+)/([^/]+)/-/tree/([^/]+)/(.+)".toRegex()
-        gitlabTreeWithPath.find(trimmedInput)?.let { match ->
+        gitlabTreeWithPathRegex.find(trimmedInput)?.let { match ->
             val (owner, repo, ref, subpath) = match.destructured
             return SkillSource(
                 type = SkillSourceType.GITLAB,
@@ -67,9 +73,8 @@ object SkillSourceParser {
                 subpath = subpath
             )
         }
-        
-        val gitlabTree = "gitlab\\.com/([^/]+)/([^/]+)/-/tree/([^/]+)$".toRegex()
-        gitlabTree.find(trimmedInput)?.let { match ->
+
+        gitlabTreeRegex.find(trimmedInput)?.let { match ->
             val (owner, repo, ref) = match.destructured
             return SkillSource(
                 type = SkillSourceType.GITLAB,
@@ -77,25 +82,23 @@ object SkillSourceParser {
                 ref = ref
             )
         }
-        
-        val gitlabRepo = "gitlab\\.com/([^/]+)/([^/]+)".toRegex()
-        gitlabRepo.find(trimmedInput)?.let { match ->
+
+        gitlabRepoRegex.find(trimmedInput)?.let { match ->
             val (owner, repo) = match.destructured
             return SkillSource(
                 type = SkillSourceType.GITLAB,
                 url = "https://gitlab.com/$owner/${repo.removeSuffix(".git")}.git"
             )
         }
-        
+
         // Shorthand
-        val shorthand = "^([^/]+)/([^/]+)(?:/(.+))?$".toRegex()
-        if (shorthand.matches(trimmedInput) && !trimmedInput.contains(":") && !trimmedInput.startsWith(".") && !trimmedInput.startsWith("/")) {
-            shorthand.find(trimmedInput)?.let { match ->
+        if (shorthandRegex.matches(trimmedInput) && !trimmedInput.contains(":") && !trimmedInput.startsWith(".") && !trimmedInput.startsWith("/")) {
+            shorthandRegex.find(trimmedInput)?.let { match ->
                 val (owner, repo, subpath) = match.destructured
                 return SkillSource(
                     type = SkillSourceType.GITHUB,
                     url = "https://github.com/$owner/${repo.removeSuffix(".git")}.git",
-                    subpath = if (subpath.isEmpty()) null else subpath
+                    subpath = subpath.takeIf { it.isNotEmpty() }
                 )
             }
         }
@@ -105,12 +108,12 @@ object SkillSourceParser {
     
     private fun isLocalPath(input: String): Boolean {
         if (input.startsWith("/") || input.startsWith("./") || input.startsWith("../") || input == "." || input == "..") return true
-        if ("^[a-zA-Z]:[/\\\\]".toRegex().containsMatchIn(input)) return true
-        return File(input).exists() && File(input).isAbsolute
+        if (windowsAbsoluteRegex.containsMatchIn(input)) return true
+        return File(input).isAbsolute
     }
     
     private fun isDirectSkillUrl(input: String): Boolean {
-        if (!input.startsWith("http://") && !input.startsWith("https://")) return false
+        if (!httpSchemeRegex.containsMatchIn(input)) return false
         if (!input.lowercase().endsWith("/skill.md")) return false
         
         if (input.contains("github.com/") && !input.contains("raw.githubusercontent.com")) {

@@ -1,6 +1,5 @@
 package com.bartlab.agentskills.util
 
-import com.intellij.openapi.util.SystemInfo
 import java.io.File
 
 object PathResolver {
@@ -22,7 +21,7 @@ object PathResolver {
                 if (relative.startsWith(File.separator)) {
                     relative = relative.substring(1)
                 }
-                return if (relative.isEmpty()) "." else relative
+                return relative.ifEmpty { "." }
             }
         }
         
