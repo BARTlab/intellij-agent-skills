@@ -49,6 +49,14 @@ dependencies {
     implementation("io.modelcontextprotocol.sdk:mcp-json-jackson2:0.17.2")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.19.2")
     implementation("io.projectreactor:reactor-core:3.6.11")
+    implementation("org.yaml:snakeyaml:2.2")
+
+    compileOnly("org.junit.jupiter:junit-jupiter-api:5.10.2")
+
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
 }
 
 intellijPlatform {
@@ -69,6 +77,8 @@ intellijPlatform {
         token.set(System.getenv("PUBLISH_TOKEN"))
     }
 }
+
+apply(from = "test.gradle.kts")
 
 tasks {
     runIde {
