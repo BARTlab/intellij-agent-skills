@@ -14,8 +14,8 @@ data class AgentSkill(
     val allowedTools: List<String> = emptyList()
 ) {
     /**
-     * Элемент метаданных для system/context (без полного текста).
-     * Формат соответствует вашей спецификации:
+     * Metadata element for system/context (without full text).
+     * The format matches the specification:
      *
      * <skill>
      *   <name>...</name>

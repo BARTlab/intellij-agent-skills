@@ -2,13 +2,10 @@ package com.bartlab.agentskills.service
 
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.components.Service
-import com.intellij.openapi.project.Project
 import com.bartlab.agentskills.model.AgentSkill
 
 @Service(Service.Level.PROJECT)
-class SkillPromptXmlService(
-    private val project: Project,
-) {
+class SkillPromptXmlService {
     private val log = Logger.getInstance(SkillPromptXmlService::class.java)
 
     fun buildAvailableSkillsXml(

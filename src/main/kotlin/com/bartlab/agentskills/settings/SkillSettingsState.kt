@@ -9,14 +9,14 @@ class SkillSettingsState : PersistentStateComponent<SkillSettingsState.State> {
 
     enum class SkillExposureMode {
         /**
-         * Метаданные публикуются для всех найденных скиллов.
-         * Полный текст/инструкции — только по tool-запросу (skills).
+         * Metadata is published for all discovered skills.
+         * Full text/instructions are provided only via tool request (skills).
          */
         AUTO_ALL_METADATA,
 
         /**
-         * Метаданные публикуются только для выбранных пользователем скиллов.
-         * Полный текст/инструкции — только по tool-запросу (skills).
+         * Metadata is published only for user-selected skills.
+         * Full text/instructions are provided only via tool request (skills).
          */
         SELECTED_ONLY_METADATA
     }
