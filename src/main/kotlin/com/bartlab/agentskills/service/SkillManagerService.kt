@@ -1,11 +1,9 @@
 package com.bartlab.agentskills.service
 
-import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.SystemInfo
 import com.bartlab.agentskills.model.AgentSkill
 import com.bartlab.agentskills.model.SkillSource
 import com.bartlab.agentskills.model.SkillSourceType
@@ -13,9 +11,7 @@ import com.bartlab.agentskills.settings.SkillSettingsState
 import com.bartlab.agentskills.util.AgentSkillsNotifier
 import com.bartlab.agentskills.util.PathResolver
 import java.io.File
-import java.net.URL
-import java.nio.file.Files
-import java.nio.file.Paths
+import java.net.URI
 import java.util.concurrent.TimeUnit
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -23,6 +19,8 @@ import com.google.gson.GsonBuilder
 @Service(Service.Level.PROJECT)
 class SkillManagerService(private val project: Project) {
     private val log = Logger.getInstance(SkillManagerService::class.java)
+    private val fileService = project.getService(SkillFileService::class.java)
+    private val yamlParser = SkillYamlParser()
 
     fun initSkill(name: String, selectedAgents: List<String>, createSymlinks: Boolean, global: Boolean = false): Boolean {
         val basePath = project.basePath ?: return false
@@ -35,7 +33,7 @@ class SkillManagerService(private val project: Project) {
             File(basePath, ".agents/skills")
         }
 
-        if (!targetBaseDir.exists() && !targetBaseDir.mkdirs()) {
+        if (!fileService.ensureDirectory(targetBaseDir)) {
             AgentSkillsNotifier.notify(project, "Init Skill", "Failed to create directory: ${targetBaseDir.absolutePath}", NotificationType.ERROR)
             return false
         }
@@ -46,7 +44,7 @@ class SkillManagerService(private val project: Project) {
             return false
         }
 
-        if (!skillDir.mkdirs()) {
+        if (!fileService.ensureDirectory(skillDir)) {
             AgentSkillsNotifier.notify(project, "Init Skill", "Failed to create skill directory: ${skillDir.absolutePath}", NotificationType.ERROR)
             return false
         }
@@ -65,10 +63,8 @@ class SkillManagerService(private val project: Project) {
             Welcome to your new agent skill!
         """.trimIndent()
         
-        try {
-            skillMd.writeText(template)
-        } catch (e: Exception) {
-            AgentSkillsNotifier.notify(project, "Init Skill", "Failed to create SKILL.md: ${e.message}", NotificationType.ERROR)
+        if (!fileService.writeText(skillMd, template)) {
+            AgentSkillsNotifier.notify(project, "Init Skill", "Failed to create SKILL.md", NotificationType.ERROR)
             return false
         }
 
@@ -88,25 +84,21 @@ class SkillManagerService(private val project: Project) {
             return false
         }
         
-        val settings = SkillSettingsState.getInstance(project).state
-        val basePath = project.basePath ?: return false
-        
         var tempDir: File? = null
         return try {
             val skillsDir: File = when (source.type) {
                 SkillSourceType.LOCAL -> File(source.localPath!!)
                 SkillSourceType.DIRECT_URL -> {
-                    tempDir = Files.createTempDirectory("agent-skill-direct").toFile()
+                    tempDir = fileService.createTempDir("agent-skill-direct")
                     val skillFile = File(tempDir, "SKILL.md")
-                    URL(source.url).openStream().use { input ->
-                        skillFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
+                    if (!fileService.downloadToFile(URI.create(source.url), skillFile)) {
+                        AgentSkillsNotifier.notify(project, "Add Skill", "Failed to download ${source.url}", NotificationType.ERROR)
+                        return false
                     }
                     tempDir
                 }
                 SkillSourceType.GITHUB, SkillSourceType.GITLAB -> {
-                    tempDir = Files.createTempDirectory("agent-skill-clone").toFile()
+                    tempDir = fileService.createTempDir("agent-skill-clone")
                     val gitArgs = mutableListOf("clone", "--depth", "1")
                     if (source.ref != null) {
                         gitArgs.add("-b")
@@ -141,7 +133,7 @@ class SkillManagerService(private val project: Project) {
             AgentSkillsNotifier.notify(project, "Add Skill", "Error: ${e.message}", NotificationType.ERROR)
             false
         } finally {
-            tempDir?.deleteRecursively()
+            tempDir?.let { fileService.deleteRecursively(it) }
         }
     }
 
@@ -159,7 +151,7 @@ class SkillManagerService(private val project: Project) {
             }
         }
 
-        // Priority dirs like in cli.js
+        // Priority directories
         val priorityDirs = listOf(
             "skills", "skills/.curated", "skills/.experimental", "skills/.system",
             ".agent/skills", ".agents/skills", ".claude/skills", ".cline/skills",
@@ -186,9 +178,7 @@ class SkillManagerService(private val project: Project) {
 
         // Deep search if none found
         if (skills.isEmpty()) {
-            baseDir.walkTopDown()
-                .maxDepth(5)
-                .filter { it.name == "SKILL.md" }
+            fileService.findSkillFiles(baseDir, 5)
                 .forEach { skillMd ->
                     parseSkillName(skillMd)?.let { name ->
                         if (skills.none { it.name == name }) {
@@ -202,11 +192,8 @@ class SkillManagerService(private val project: Project) {
     }
 
     private fun parseSkillName(skillMd: File): String? {
-        val content = skillMd.readText()
-        val regex = "---([\\s\\S]*?)---".toRegex()
-        val match = regex.find(content) ?: return null
-        val yaml = match.groupValues[1]
-        return "name:\\s*(.*)".toRegex().find(yaml)?.groupValues?.get(1)?.trim()?.removeSurrounding("\"")?.removeSurrounding("'")
+        val content = fileService.readText(skillMd) ?: return null
+        return yamlParser.parseFrontMatter(content)?.name?.trim()
     }
 
     private fun installDiscoveredSkill(
@@ -224,7 +211,7 @@ class SkillManagerService(private val project: Project) {
         val masterDir = if (global) {
             File(System.getProperty("user.home"), ".agent-skills/skills")
         } else if (settings.useCustomPath) {
-            File(expandPath(settings.customPath))
+            File(PathResolver.expandPath(settings.customPath))
         } else {
             File(basePath, ".agents/skills")
         }
@@ -260,14 +247,14 @@ class SkillManagerService(private val project: Project) {
             "skillName" to skillInfo.name,
             "installedAt" to java.time.Instant.now().toString()
         )
-        File(skillDir, "skill-source.json").writeText(gson.toJson(sourceInfo))
+        fileService.writeText(File(skillDir, "skill-source.json"), gson.toJson(sourceInfo))
     }
 
-    private fun copyFiltered(src: File, dest: File) {
-        if (!dest.exists()) dest.mkdirs()
+    private fun copyFiltered(src: File, targetDir: File) {
+        if (!targetDir.exists()) targetDir.mkdirs()
         src.listFiles()?.forEach { file ->
             if (isJunkFile(file)) return@forEach
-            val target = File(dest, file.name)
+            val target = File(targetDir, file.name)
             if (file.isDirectory) {
                 copyFiltered(file, target)
             } else {
@@ -279,9 +266,9 @@ class SkillManagerService(private val project: Project) {
     private fun isJunkFile(file: File): Boolean {
         val name = file.name
         val lowerName = name.lowercase()
-        // Based on cli.js EXCLUDE_FILES and isExcluded
+
         if (name == "README.md" || name == "metadata.json") return true
-        if (name.startsWith("_") && name != "__NOT_A_JUNK__") return true // cli.js startsWith("_")
+        if (name.startsWith("_") && name != "__NOT_A_JUNK__") return true
         
         // Additional junk files
         return lowerName.startsWith(".") || 
@@ -298,10 +285,10 @@ class SkillManagerService(private val project: Project) {
         
         for (agentName in agents) {
             val agentPath = allAgentPaths.find { it.name == agentName } ?: continue
-            val targetDir = File(expandPath(if (global) agentPath.globalPath else agentPath.projectPath))
+            val targetDir = File(PathResolver.expandPath(if (global) agentPath.globalPath else agentPath.projectPath))
             
             if (!targetDir.exists() && !targetDir.mkdirs()) {
-                log.warn("Failed to create agent directory: ${targetDir.absolutePath}")
+                log.warn("Failed to create agent directory for copy: ${targetDir.absolutePath}")
                 continue
             }
             
@@ -317,17 +304,17 @@ class SkillManagerService(private val project: Project) {
         val sourceFile = File(skillDir, "skill-source.json")
         
         if (!sourceFile.exists()) {
-            // Fallback to git pull if no source info but it's a git repo
+            // Fallback to `git pull` if there is no source info, but it is a Git repo.
             if (File(skillDir, ".git").exists()) {
                 val success = runGitCommand(skillDir, "pull")
                 if (success) {
-                    notify("Update Skill", "Successfully updated ${skill.name}", NotificationType.INFORMATION)
+                    AgentSkillsNotifier.notify(project, "Update Skill", "Successfully updated ${skill.name}", NotificationType.INFORMATION)
                 } else {
-                    notify("Update Skill", "Failed to update ${skill.name}", NotificationType.ERROR)
+                    AgentSkillsNotifier.notify(project, "Update Skill", "Failed to update ${skill.name}", NotificationType.ERROR)
                 }
                 return success
             }
-            notify("Update Skill", "No source information for ${skill.name}", NotificationType.WARNING)
+            AgentSkillsNotifier.notify(project, "Update Skill", "No source information for ${skill.name}", NotificationType.WARNING)
             return false
         }
 
@@ -345,12 +332,12 @@ class SkillManagerService(private val project: Project) {
                     if (File(skillDir, ".git").exists()) {
                         runGitCommand(skillDir, "pull")
                     } else {
-                        // If it was installed without .git (e.g. copied from temp), we might need to re-clone
+                        // If it was installed without `.git` (for example, copied from a temp dir), re-clone it.
                         updateFromRemoteRepo(skillDir, url, ref, subpath)
                     }
                 }
                 "direct_url" -> {
-                    URL(url).openStream().use { input ->
+                    URI.create(url).toURL().openStream().use { input ->
                         skillMdFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
@@ -364,25 +351,25 @@ class SkillManagerService(private val project: Project) {
                 }
             }
             
-            // Update timestamp
+            // Update timestamp.
             val mutableInfo = sourceInfo.toMutableMap()
             mutableInfo["updatedAt"] = java.time.Instant.now().toString()
-            sourceFile.writeText(GsonBuilder().setPrettyPrinting().create().toJson(mutableInfo))
+            fileService.writeText(sourceFile, GsonBuilder().setPrettyPrinting().create().toJson(mutableInfo))
 
-            notify("Update Skill", "Successfully updated ${skill.name}", NotificationType.INFORMATION)
+            AgentSkillsNotifier.notify(project, "Update Skill", "Successfully updated ${skill.name}", NotificationType.INFORMATION)
             true
         } catch (e: Exception) {
             log.error("Error updating skill", e)
-            notify("Update Skill", "Error updating ${skill.name}: ${e.message}", NotificationType.ERROR)
+            AgentSkillsNotifier.notify(project, "Update Skill", "Error updating ${skill.name}: ${e.message}", NotificationType.ERROR)
             false
         }
     }
 
     private fun updateFromRemoteRepo(skillDir: File, url: String, ref: String?, subpath: String?): Boolean {
-        val tempDir = Files.createTempDirectory("agent-skill-update").toFile()
+        val tempDir = fileService.createTempDir("agent-skill-update")
         return try {
             val gitArgs = mutableListOf("clone", "--depth", "1", "--no-tags")
-            if (ref != null && ref.isNotEmpty()) {
+            if (!ref.isNullOrEmpty()) {
                 gitArgs.add("-b")
                 gitArgs.add(ref)
             }
@@ -390,14 +377,14 @@ class SkillManagerService(private val project: Project) {
             gitArgs.add(".")
             
             if (runGitCommand(tempDir, *gitArgs.toTypedArray())) {
-                val sourceDir = if (subpath != null && subpath.isNotEmpty()) {
+                val sourceDir = if (!subpath.isNullOrEmpty()) {
                     val sDir = File(tempDir, subpath)
                     if (sDir.exists()) sDir else tempDir
                 } else {
                     tempDir
                 }
                 
-                // Clear old files but keep skill-source.json
+                // Clear old files but keep `skill-source.json`.
                 skillDir.listFiles()?.forEach { 
                     if (it.name != "skill-source.json") {
                         it.deleteRecursively()
@@ -416,14 +403,14 @@ class SkillManagerService(private val project: Project) {
         val skillFile = File(skill.path)
         val skillDir = skillFile.parentFile ?: return false
         
-        // Remove symlinks in agent directories
+        // Remove symlinks in agent directories.
         removeLinks(skillDir)
         
         val deleted = skillDir.deleteRecursively()
         if (deleted) {
-            notify("Delete Skill", "Successfully deleted ${skill.name}", NotificationType.INFORMATION)
+            AgentSkillsNotifier.notify(project, "Delete Skill", "Successfully deleted ${skill.name}", NotificationType.INFORMATION)
         } else {
-            notify("Delete Skill", "Failed to delete ${skill.name}", NotificationType.ERROR)
+            AgentSkillsNotifier.notify(project, "Delete Skill", "Failed to delete ${skill.name}", NotificationType.ERROR)
         }
         return deleted
     }
@@ -436,7 +423,7 @@ class SkillManagerService(private val project: Project) {
 
         val targetDirs = mutableSetOf<File>()
         
-        // Collect all possible agent directories
+        // Collect all possible agent directories.
         for (ap in allAgentPaths) {
             if (basePath != null) {
                 targetDirs.add(File(basePath, ap.projectPath))
@@ -449,10 +436,10 @@ class SkillManagerService(private val project: Project) {
             }
         }
 
-        // Also check custom path if set
+        // Also, check the custom path if it is set.
         val settings = SkillSettingsState.getInstance(project).state
         if (settings.useCustomPath && settings.customPath.isNotBlank()) {
-            targetDirs.add(File(expandPath(settings.customPath)))
+            targetDirs.add(File(PathResolver.expandPath(settings.customPath)))
         }
 
         for (dir in targetDirs) {
@@ -461,12 +448,12 @@ class SkillManagerService(private val project: Project) {
             val linkFile = File(dir, skillDir.name)
             if (linkFile.exists()) {
                 try {
-                    // We only want to delete it if it's a symlink OR it's exactly the directory we are looking for
-                    // (though usually these are symlinks)
-                    if (Files.isSymbolicLink(linkFile.toPath())) {
-                        val target = Files.readSymbolicLink(linkFile.toPath())
-                        if (target.toAbsolutePath() == skillDir.toPath().toAbsolutePath()) {
-                            Files.delete(linkFile.toPath())
+                    // Only delete it if it is a symlink or exactly the expected directory.
+                    // (Usually these are symlinks.)
+                    if (fileService.isSymbolicLink(linkFile)) {
+                        val target = fileService.readSymbolicLink(linkFile)
+                        if (target != null && target.toAbsolutePath() == skillDir.toPath().toAbsolutePath()) {
+                            fileService.deleteIfExists(linkFile)
                             log.info("Removed symlink: ${linkFile.absolutePath}")
                         }
                     }
@@ -483,11 +470,11 @@ class SkillManagerService(private val project: Project) {
         
         for (agentName in agents) {
             val agentPath = allAgentPaths.find { it.name == agentName } ?: continue
-            val targetLinkDir = File(expandPath(if (global) agentPath.globalPath else agentPath.projectPath))
+            val targetLinkDir = File(PathResolver.expandPath(if (global) agentPath.globalPath else agentPath.projectPath))
             
             if (!targetLinkDir.exists()) {
                 if (!targetLinkDir.mkdirs()) {
-                    log.warn("Failed to create agent directory: ${targetLinkDir.absolutePath}")
+                    log.warn("Failed to create agent directory for link: ${targetLinkDir.absolutePath}")
                     continue
                 }
             }
@@ -498,11 +485,11 @@ class SkillManagerService(private val project: Project) {
                     log.info("Link already exists: ${linkFile.absolutePath}")
                     continue
                 }
-                Files.createSymbolicLink(linkFile.toPath(), skillDir.toPath())
+                fileService.createSymbolicLink(linkFile, skillDir)
                 log.info("Created symlink: ${linkFile.absolutePath} -> ${skillDir.absolutePath}")
             } catch (e: Exception) {
                 log.error("Failed to create symlink: ${linkFile.absolutePath}", e)
-                notify("Symlink Error", "Failed to create symlink for $agentName: ${e.message}", NotificationType.ERROR)
+                AgentSkillsNotifier.notify(project, "Symlink Error", "Failed to create symlink for $agentName: ${e.message}", NotificationType.ERROR)
             }
         }
     }
@@ -530,21 +517,5 @@ class SkillManagerService(private val project: Project) {
         }
     }
 
-    private fun expandPath(path: String): String {
-        if (path.startsWith("~")) {
-            val userHome = System.getProperty("user.home") ?: return path
-            return File(userHome, path.substring(1).replace('/', File.separatorChar)).absolutePath
-        }
-        val basePath = project.basePath ?: return path
-        val file = File(path)
-        if (file.isAbsolute) return path
-        return File(basePath, path.replace('/', File.separatorChar)).absolutePath
-    }
-
-    private fun notify(title: String, content: String, type: NotificationType) {
-        NotificationGroupManager.getInstance()
-            .getNotificationGroup("AgentSkills")
-            .createNotification(title, content, type)
-            .notify(project)
-    }
+    
 }

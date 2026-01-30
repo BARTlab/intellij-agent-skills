@@ -1,7 +1,6 @@
 package com.bartlab.agentskills.service
 
 import com.intellij.notification.NotificationType
-import com.intellij.notification.NotificationGroupManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -16,9 +15,13 @@ class SkillScannerService(private val project: Project) {
     private val log = Logger.getInstance(SkillScannerService::class.java)
 
     private val skillMap = mutableMapOf<String, AgentSkill>()
+    private val skillNameRegex = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    private val fileService = project.getService(SkillFileService::class.java)
+    private val yamlParser = SkillYamlParser()
 
     data class AgentPath(val name: String, val projectPath: String, val globalPath: String)
     
+    @Suppress("SpellCheckingInspection")
     private val agentPaths = listOf(
         AgentPath("Amp", ".agents/skills", "~/.config/agents/skills"),
         AgentPath("Antigravity", ".agent/skills", "~/.gemini/antigravity/global_skills"),
@@ -95,16 +98,12 @@ class SkillScannerService(private val project: Project) {
         if (!dir.exists() || !dir.isDirectory) return
 
         log.info("scanDirectory(): scanning ${dir.absolutePath}")
-        dir.walkTopDown()
-            .maxDepth(3)
-            .filter { it.name == "SKILL.md" }
+        fileService.findSkillFiles(dir, 3)
             .forEach { file ->
-                val content = runCatching { file.readText() }.getOrNull() ?: return@forEach
+                val content = fileService.readText(file) ?: return@forEach
                 val skill = parseSkill(file.parentFile.name, content, file.absolutePath)
                 if (skill != null) {
-                    if (!skillMap.containsKey(skill.name)) {
-                        skillMap[skill.name] = skill
-                    }
+                    skillMap.putIfAbsent(skill.name, skill)
                 }
             }
     }
@@ -118,71 +117,19 @@ class SkillScannerService(private val project: Project) {
     }
 
     private fun parseSkill(dirName: String, content: String, path: String): AgentSkill? {
-        val regex = "---([\\s\\S]*?)---".toRegex()
-        val match = regex.find(content) ?: return null
-        val yamlBlock = match.groupValues[1]
-        val body = content.replace(regex, "").trim()
+        val metadata = yamlParser.parseFrontMatter(content) ?: return null
+        val body = yamlParser.stripFrontMatter(content)
 
-        val lines = yamlBlock.lines().map { it.trimEnd() }
-        
-        var name = dirName
-        var description = ""
-        var license: String? = null
-        var compatibility: String? = null
-        val allowedTools = mutableListOf<String>()
-        val metadata = mutableMapOf<String, String>()
-        var version = ""
+        val name = metadata.name?.ifBlank { dirName } ?: dirName
+        val description = metadata.description.orEmpty()
+        val license = metadata.license
+        val compatibility = metadata.compatibility
+        val allowedTools = metadata.allowedTools
+        val version = metadata.version.orEmpty()
+        val extraMetadata = metadata.metadata
 
-        var currentSection = "" // "metadata" or ""
-
-        for (line in lines) {
-            if (line.isBlank()) continue
-            
-            val trimmedLine = line.trim()
-            
-            // Обработка вложенных метаданных
-            if (line.startsWith("  ") && currentSection == "metadata") {
-                val kvMatch = "^\\s*([^:]+):\\s*(.*)$".toRegex().find(line)
-                if (kvMatch != null) {
-                    val key = kvMatch.groupValues[1].trim()
-                    val rawValue = kvMatch.groupValues[2].trim()
-                    val value = rawValue.split("#")[0].trim().removeSurrounding("\"").removeSurrounding("'")
-                    metadata[key] = value
-                    if (key == "version") version = value
-                }
-                continue
-            }
-
-            val kvMatch = "^([^:]+):\\s*(.*)$".toRegex().find(trimmedLine)
-            if (kvMatch != null) {
-                val key = kvMatch.groupValues[1].trim()
-                val rawValue = kvMatch.groupValues[2].trim()
-                val value = rawValue.split("#")[0].trim().removeSurrounding("\"").removeSurrounding("'")
-
-                when (key) {
-                    "name" -> name = value
-                    "description" -> description = value
-                    "license" -> license = value
-                    "compatibility" -> compatibility = value
-                    "allowed-tools" -> allowedTools.addAll(value.split("\\s+".toRegex()).filter { it.isNotBlank() })
-                    "metadata" -> {
-                        currentSection = "metadata"
-                    }
-                    "version" -> version = value
-                    else -> {
-                        currentSection = ""
-                    }
-                }
-            } else {
-                currentSection = ""
-            }
-        }
-
-        // Валидация name согласно спецификации
-        val isNameValid = name.length in 1..64 && 
-                          name.all { it.isLowerCase() || it.isDigit() || it == '-' } &&
-                          !name.startsWith("-") && !name.endsWith("-") &&
-                          !name.contains("--")
+        // Validate the name against the specification
+        val isNameValid = name.length in 1..64 && skillNameRegex.matches(name)
         
         if (!isNameValid) {
             log.warn("Skill name '$name' in $path is invalid according to specification")
@@ -198,7 +145,7 @@ class SkillScannerService(private val project: Project) {
             version = version,
             path = path,
             fullContent = body,
-            metadata = metadata,
+            metadata = extraMetadata,
             license = license,
             compatibility = compatibility,
             allowedTools = allowedTools
@@ -211,10 +158,4 @@ class SkillScannerService(private val project: Project) {
 
     fun getAgentPaths(): List<AgentPath> = agentPaths
 
-    fun findSkillForPrompt(prompt: String): AgentSkill? {
-        return skillMap.values.find { skill ->
-            prompt.contains(skill.name, ignoreCase = true) ||
-                skill.description.split(" ").any { it.length > 3 && prompt.contains(it, ignoreCase = true) }
-        }
-    }
 }
