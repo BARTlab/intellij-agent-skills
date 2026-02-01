@@ -1,8 +1,10 @@
 package com.bartlab.agentskills.mcp
 
+import com.bartlab.agentskills.AgentSkillsConstants
 import com.bartlab.agentskills.service.SkillPromptXmlService
 import com.bartlab.agentskills.service.SkillScannerService
 import com.bartlab.agentskills.settings.SkillSettingsState
+import com.bartlab.agentskills.model.AgentSkill
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import io.modelcontextprotocol.server.McpServer
@@ -12,6 +14,14 @@ import reactor.core.publisher.Mono
 import java.lang.reflect.Array as ReflectArray
 import java.util.function.BiFunction
 
+/**
+ * MCP tools registrar for working with skills.
+ *
+ * Provides the following tools:
+ * - `skillslist` - list of available skills
+ * - `skills` - full skill text by name
+ * - `skillsset` - change skill exposure mode
+ */
 class SkillMcpToolRegistry(
     private val project: Project,
     private val log: Logger
@@ -102,7 +112,39 @@ class SkillMcpToolRegistry(
                 .build()
         )
 
+        registerPrompts(spec, defaultSessionKey)
         registerCompletions(spec)
+    }
+
+    private fun registerPrompts(spec: McpServer.AsyncSpecification<*>, defaultSessionKey: String) {
+        try {
+            val prompt = McpSchema.Prompt(
+                "skills",
+                "Agent Skills",
+                "Instructions and available skill metadata from the Agent Skills MCP server.",
+                listOf(
+                    McpSchema.PromptArgument("session", "Optional session id override", false)
+                )
+            )
+
+            val promptSpec = McpServerFeatures.AsyncPromptSpecification(prompt) { exchange, req ->
+                val requestedSession = req.arguments()?.get("session") as? String
+                val sessionKey = requestedSession?.takeIf { it.isNotBlank() }
+                    ?: exchange.sessionId()
+                    ?: defaultSessionKey
+
+                val promptText = buildPromptText(sessionKey)
+                val message = McpSchema.PromptMessage(
+                    McpSchema.Role.USER,
+                    McpSchema.TextContent(promptText)
+                )
+                Mono.just(McpSchema.GetPromptResult("Agent Skills MCP prompt", listOf(message)))
+            }
+
+            spec.prompts(promptSpec)
+        } catch (e: Throwable) {
+            log.warn("MCP: Failed to register prompts: ${e.message}")
+        }
     }
 
     private fun registerCompletions(spec: McpServer.AsyncSpecification<*>) {
@@ -117,10 +159,11 @@ class SkillMcpToolRegistry(
                 val filteredNames = allSkills.map { it.name }
                     .filter { it.contains(currentValue, ignoreCase = true) }
 
+                val maxResults = AgentSkillsConstants.MAX_COMPLETION_RESULTS
                 val completion = McpSchema.CompleteResult.CompleteCompletion(
-                    filteredNames.take(100),
+                    filteredNames.take(maxResults),
                     filteredNames.size,
-                    filteredNames.size > 100
+                    filteredNames.size > maxResults
                 )
 
                 Mono.just(McpSchema.CompleteResult(completion))
@@ -158,19 +201,19 @@ class SkillMcpToolRegistry(
         }
     }
 
+    private fun buildPromptText(sessionKey: String): String {
+        val settings = SkillSettingsState.getInstance(project).state
+        val template = settings.mcpPromptTemplate.ifBlank { SkillSettingsState.DEFAULT_MCP_PROMPT_TEMPLATE }
+        val skillsXml = buildSkillsXml(sessionKey, includeLocation = true)
+        return template
+            .replace("{{skills_xml}}", skillsXml.trim())
+            .replace("{{session}}", sessionKey)
+    }
+
     private fun skillslist(sessionKey: String): String {
-        val sessionState = SkillChatSessionState.getInstance(project)
-        val session = sessionState.getOrCreate(sessionKey)
         val scanner = project.getService(SkillScannerService::class.java) ?: return "ERROR: scanner not available"
         val promptService = project.getService(SkillPromptXmlService::class.java) ?: return "ERROR: prompt service not available"
-        val allSkills = scanner.getSkills()
-
-        val visibleSkills = when (session.exposureMode) {
-            SkillSettingsState.SkillExposureMode.AUTO_ALL_METADATA -> allSkills
-            SkillSettingsState.SkillExposureMode.SELECTED_ONLY_METADATA ->
-                allSkills.filter { it.name in session.selectedSkillNames.toSet() }
-        }
-
+        val visibleSkills = visibleSkillsForSession(scanner.getSkills(), sessionKey)
         return promptService.buildAvailableSkillsXml(visibleSkills, includeLocation = true)
     }
 
@@ -184,5 +227,22 @@ class SkillMcpToolRegistry(
         val skill = scanner.getSkills().firstOrNull { it.name.equals(skillName, ignoreCase = true) }
             ?: return "ERROR: skill not found: $skillName"
         return skill.fullContent
+    }
+
+    private fun buildSkillsXml(sessionKey: String, includeLocation: Boolean): String {
+        val scanner = project.getService(SkillScannerService::class.java) ?: return ""
+        val promptService = project.getService(SkillPromptXmlService::class.java) ?: return ""
+        val visibleSkills = visibleSkillsForSession(scanner.getSkills(), sessionKey)
+        return promptService.buildAvailableSkillsXml(visibleSkills, includeLocation = includeLocation)
+    }
+
+    private fun visibleSkillsForSession(allSkills: List<AgentSkill>, sessionKey: String): List<AgentSkill> {
+        val sessionState = SkillChatSessionState.getInstance(project)
+        val session = sessionState.getOrCreate(sessionKey)
+        return when (session.exposureMode) {
+            SkillSettingsState.SkillExposureMode.AUTO_ALL_METADATA -> allSkills
+            SkillSettingsState.SkillExposureMode.SELECTED_ONLY_METADATA ->
+                allSkills.filter { it.name in session.selectedSkillNames.toSet() }
+        }
     }
 }
