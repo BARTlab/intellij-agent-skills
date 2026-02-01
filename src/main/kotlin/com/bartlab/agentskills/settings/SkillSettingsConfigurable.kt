@@ -1,5 +1,6 @@
 package com.bartlab.agentskills.settings
 
+import com.bartlab.agentskills.AgentSkillsConstants
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -14,6 +15,8 @@ import com.intellij.openapi.ui.TextComponentAccessor
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.PortField
 import com.intellij.ui.components.JBCheckBox
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.TopGap
 import com.intellij.ui.dsl.builder.panel
@@ -26,6 +29,15 @@ import com.intellij.notification.NotificationType
 import java.awt.datatransfer.StringSelection
 import javax.swing.*
 
+/**
+ * Configurable for Agent Skills plugin settings.
+ *
+ * Provides UI for configuring:
+ * - MCP server (port, enable/disable)
+ * - Prompt template
+ * - Skill search paths
+ * - Skill exposure mode
+ */
 class SkillSettingsConfigurable(private val project: Project) : Configurable {
     private val log = Logger.getInstance(SkillSettingsConfigurable::class.java)
     private val settings = SkillSettingsState.getInstance(project)
@@ -37,12 +49,13 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
 
     private var integrateAiAssistantCheckBox: JBCheckBox? = null
     private var mcpPortField: PortField? = null
+    private var mcpPromptArea: JBTextArea? = null
 
     private var skillsTable: AgentSkillsTableComponent? = null
 
     private var rootComponent: JComponent? = null
 
-    override fun getDisplayName(): String = "Agent Skills"
+    override fun getDisplayName(): String = AgentSkillsConstants.PLUGIN_NAME
 
     override fun createComponent(): JComponent {
         val scanner = project.getService(SkillScannerService::class.java)
@@ -51,6 +64,12 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
         val port = PortField(settings.state.mcpPort)
         integrateAiAssistantCheckBox = ai
         mcpPortField = port
+        val promptArea = JBTextArea(settings.state.mcpPromptTemplate, 8, 60).apply {
+            lineWrap = true
+            wrapStyleWord = true
+        }
+        mcpPromptArea = promptArea
+        val promptScrollPane = JBScrollPane(promptArea)
 
         val useCustom = JBCheckBox("Skill search directory:")
         val scannerPathsHint = scanner?.getAgentPaths()?.let { paths ->
@@ -141,6 +160,15 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
                 }
             }
 
+            group("MCP Prompt") {
+                row {
+                    label("Placeholders: {{skills_xml}} inserts skills list, {{session}} inserts session id.")
+                }
+                row {
+                    cell(promptScrollPane).resizableColumn().align(Align.FILL)
+                }
+            }
+
             group("Search Settings") {
                 row {
                     cell(useCustom)
@@ -160,7 +188,7 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
                 cell(skillsTableComponent.createPanel()).align(Align.FILL)
             }.resizableRow()
         }.apply {
-            border = JBUI.Borders.empty(10)
+            border = JBUI.Borders.empty(AgentSkillsConstants.SETTINGS_PANEL_PADDING)
         }
 
         refreshSkills()
@@ -186,6 +214,7 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
 
         integrateAiAssistantCheckBox?.isSelected = s.integrateAiAssistant
         mcpPortField?.number = s.mcpPort
+        mcpPromptArea?.text = s.mcpPromptTemplate
 
         applyModeToUi()
     }
@@ -204,13 +233,15 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
 
         val ai = integrateAiAssistantCheckBox?.isSelected ?: s.integrateAiAssistant
         val port = mcpPortField?.number ?: s.mcpPort
+        val prompt = mcpPromptArea?.text ?: s.mcpPromptTemplate
 
         return useDir != s.useCustomPath ||
             expandedCustom != sCustomExpanded ||
             mode != s.exposureMode ||
             selectedNow != s.selectedSkillNames ||
             ai != s.integrateAiAssistant ||
-            port != s.mcpPort
+            port != s.mcpPort ||
+            prompt != s.mcpPromptTemplate
     }
 
     override fun apply() {
@@ -227,6 +258,7 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
 
         s.integrateAiAssistant = integrateAiAssistantCheckBox?.isSelected ?: s.integrateAiAssistant
         s.mcpPort = mcpPortField?.number ?: s.mcpPort
+        s.mcpPromptTemplate = mcpPromptArea?.text ?: s.mcpPromptTemplate
 
         // Immediately enable/disable the MCP server based on the checkbox.
         project.getService(SkillMcpServerService::class.java)?.syncWithSettings()
@@ -240,6 +272,7 @@ class SkillSettingsConfigurable(private val project: Project) : Configurable {
         customPathField = null
         exposureModeCombo = null
         integrateAiAssistantCheckBox = null
+        mcpPromptArea = null
         skillsTable?.dispose()
         skillsTable = null
     }
