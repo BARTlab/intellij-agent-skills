@@ -1,5 +1,6 @@
 package com.bartlab.agentskills.mcp
 
+import com.bartlab.agentskills.AgentSkillsConstants
 import com.intellij.openapi.diagnostic.Logger
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -52,7 +53,7 @@ class SkillMcpSessionHandler(
             val provider = KtorSessionProvider(transport)
 
             val mcpServer = McpServer.async(provider)
-                .serverInfo("agent-skills", "0.2.1")
+                .serverInfo(AgentSkillsConstants.MCP_SERVER_NAME, AgentSkillsConstants.MCP_SERVER_VERSION)
                 .jsonMapper(mapper)
                 .jsonSchemaValidator(validator)
                 .capabilities(McpSchema.ServerCapabilities.builder()
@@ -62,6 +63,14 @@ class SkillMcpSessionHandler(
                             this.completions()
                         } catch (_: Throwable) {
                             log.warn("MCP: completions not supported by SDK, disabling")
+                            this
+                        }
+                    }
+                    .run {
+                        try {
+                            this.prompts(true)
+                        } catch (_: Throwable) {
+                            log.warn("MCP: prompts not supported by SDK, disabling")
                             this
                         }
                     }
@@ -100,7 +109,7 @@ class SkillMcpSessionHandler(
 
                 try {
                     while (currentContext.isActive) {
-                        val msg = withTimeoutOrNull(15_000) {
+                        val msg = withTimeoutOrNull(AgentSkillsConstants.SSE_KEEP_ALIVE_TIMEOUT_MS) {
                             channel.receive()
                         }
                         if (msg != null) {

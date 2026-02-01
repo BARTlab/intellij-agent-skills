@@ -1,10 +1,12 @@
 package com.bartlab.agentskills.mcp
 
+import com.bartlab.agentskills.AgentSkillsConstants
 import com.bartlab.agentskills.settings.SkillSettingsState
 import com.bartlab.agentskills.util.AgentSkillsNotifier
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -27,21 +29,36 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Service for managing MCP (Model Context Protocol) server.
+ *
+ * Starts HTTP/SSE server for integration with AI assistants.
+ * Server automatically starts on IDE startup if enabled in settings.
+ *
+ * @see SkillSettingsState.State.integrateAiAssistant
+ */
 @Service(Service.Level.PROJECT)
-class SkillMcpServerService(private val project: Project) {
+class SkillMcpServerService(private val project: Project) : Disposable {
     private val log = Logger.getInstance(SkillMcpServerService::class.java)
-    private var scope = createScope()
-    private val host = "0.0.0.0"
+    
+    private val scopeRef = AtomicReference(createScope())
+    private val scope: CoroutineScope
+        get() = scopeRef.get()
+    
     private val port: Int
         get() = SkillSettingsState.getInstance(project).state.mcpPort
 
     private var ktorEngine: ApplicationEngine? = null
     private val engineLock = Any()
+    
     private val toolRegistry = SkillMcpToolRegistry(project, log)
+    
     private val contextRunner = object : SkillMcpContextRunner {
         override fun <T> run(block: () -> T): T = withMcpContext(block)
     }
+    
     private val sessionHandler by lazy {
         SkillMcpSessionHandler(mapper, validator, toolRegistry, log, contextRunner)
     }
@@ -49,43 +66,64 @@ class SkillMcpServerService(private val project: Project) {
     private val mapper: McpJsonMapper by lazy {
         withMcpContext { JacksonMcpJsonMapper(ObjectMapper().registerKotlinModule()) }
     }
+    
     private val validator by lazy {
         withMcpContext { JacksonJsonSchemaValidatorSupplier().get() }
     }
 
-    private fun createScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private fun createScope(): CoroutineScope = 
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /**
+     * Executes a code block with the correct ClassLoader for MCP libraries.
+     */
     private fun <T> withMcpContext(block: () -> T): T {
         val oldLoader = Thread.currentThread().contextClassLoader
-        try {
+        return try {
             Thread.currentThread().contextClassLoader = SkillMcpServerService::class.java.classLoader
-            return block()
+            block()
         } finally {
             Thread.currentThread().contextClassLoader = oldLoader
         }
     }
 
+    /**
+     * Synchronizes server state with settings.
+     *
+     * Stops the server if running, and restarts
+     * if AI assistant integration is enabled in settings.
+     */
     fun syncWithSettings() {
         stop()
         if (SkillSettingsState.getInstance(project).state.integrateAiAssistant) {
-            // Give the port a moment to release
             scope.launch {
-                delay(300)
+                // Give the port time to be released
+                delay(AgentSkillsConstants.MCP_RESTART_DELAY_MS)
                 ensureStarted()
             }
         }
     }
 
+    /**
+     * Stops the MCP server and closes all sessions.
+     */
     fun stop() {
-        scope.cancel()
+        val oldScope = scopeRef.getAndSet(createScope())
+        oldScope.cancel()
+        
         synchronized(engineLock) {
-            ktorEngine?.stop(200, 500)
+            ktorEngine?.stop(
+                AgentSkillsConstants.KTOR_STOP_GRACE_MS,
+                AgentSkillsConstants.KTOR_STOP_TIMEOUT_MS
+            )
             ktorEngine = null
         }
         sessionHandler.closeAllSessions()
-        scope = createScope()
     }
 
+    /**
+     * Starts the MCP server if not running and integration is enabled.
+     */
     fun ensureStarted() {
         if (!SkillSettingsState.getInstance(project).state.integrateAiAssistant) return
 
@@ -93,34 +131,50 @@ class SkillMcpServerService(private val project: Project) {
             if (ktorEngine != null) return
 
             try {
-                withMcpContext {
-                    // Ktor Server for HTTP/SSE
-                    startKtorServer()
-                }
-
+                withMcpContext { startKtorServer() }
                 log.info("MCP Server started (HTTP:$port)")
             } catch (e: Exception) {
                 log.error("Failed to start MCP server", e)
-                AgentSkillsNotifier.notify(project, "Agent Skills: MCP server start error", e.message ?: e.toString(), NotificationType.ERROR)
+                AgentSkillsNotifier.notify(
+                    project,
+                    "${AgentSkillsConstants.PLUGIN_NAME}: MCP server start error",
+                    e.message ?: e.toString(),
+                    NotificationType.ERROR
+                )
             }
         }
     }
 
     private fun startKtorServer() {
-        val engine = embeddedServer(CIO, host = host, port = port) {
-            intercept(ApplicationCallPipeline.Call) {
-                if (call.request.uri.contains("/messages") || call.request.uri.contains("/sse")) {
-                    this@SkillMcpServerService.log.info("MCP: Incoming ${call.request.httpMethod.value} ${call.request.uri}")
-                }
-            }
-            routing {
-                get("/sse") { sessionHandler.handleSse(call) }
-                post("/messages/{sessionId}") { sessionHandler.handlePostMessage(call) }
-                post("/messages") { sessionHandler.handlePostMessage(call) }
-                get("/health") { call.respondText("OK") }
-            }
+        val engine = embeddedServer(CIO, host = AgentSkillsConstants.MCP_SERVER_HOST, port = port) {
+            configureLogging()
+            configureRouting()
         }
         engine.start(wait = false)
-        this.ktorEngine = engine
+        ktorEngine = engine
+    }
+    
+    private fun Application.configureLogging() {
+        val serviceLog = this@SkillMcpServerService.log
+        intercept(ApplicationCallPipeline.Call) {
+            val uri = call.request.uri
+            if (uri.contains("/messages") || uri.contains("/sse")) {
+                serviceLog.info("MCP: Incoming ${call.request.httpMethod.value} $uri")
+            }
+        }
+    }
+    
+    private fun Application.configureRouting() {
+        routing {
+            get("/sse") { sessionHandler.handleSse(call) }
+            post("/messages/{sessionId}") { sessionHandler.handlePostMessage(call) }
+            post("/messages") { sessionHandler.handlePostMessage(call) }
+            get("/health") { call.respondText("OK") }
+        }
+    }
+    
+    override fun dispose() {
+        stop()
+        scopeRef.get().cancel()
     }
 }

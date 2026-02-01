@@ -2,30 +2,54 @@ package com.bartlab.agentskills.util
 
 import java.io.File
 
+/**
+ * Utilities for working with file system paths.
+ *
+ * Provides cross-platform path handling with support
+ * for `~` shorthand for home directory.
+ */
 object PathResolver {
+    
+    private val userHome: String by lazy { System.getProperty("user.home") }
+    
+    /**
+     * Expands path, replacing `~` with user's home directory.
+     *
+     * @param path Path to expand
+     * @return Absolute path
+     */
     fun expandPath(path: String): String {
-        var p = path
-        if (p.startsWith("~")) {
-            p = System.getProperty("user.home") + p.substring(1)
+        val expanded = if (path.startsWith("~")) {
+            userHome + path.substring(1)
+        } else {
+            path
         }
-        // Handle Windows paths if needed, though File handles / and \
-        return File(p).absolutePath
+        return File(expanded).absolutePath
     }
 
+    /**
+     * Shortens path for UI display.
+     *
+     * Tries to make path relative to project base path
+     * or replace home directory with `~`.
+     *
+     * @param path Full path
+     * @param basePath Project base path (optional)
+     * @return Shortened path for display
+     */
     fun shortenPath(path: String, basePath: String?): String {
         val absPath = File(path).absolutePath
+        
+        // Try to make relative to project
         if (basePath != null) {
             val absBase = File(basePath).absolutePath
             if (absPath.startsWith(absBase)) {
-                var relative = absPath.substring(absBase.length)
-                if (relative.startsWith(File.separator)) {
-                    relative = relative.substring(1)
-                }
+                val relative = absPath.removePrefix(absBase).removePrefix(File.separator)
                 return relative.ifEmpty { "." }
             }
         }
         
-        val userHome = System.getProperty("user.home")
+        // Replace home directory with ~
         if (absPath.startsWith(userHome)) {
             return "~" + absPath.substring(userHome.length)
         }

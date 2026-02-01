@@ -2,6 +2,17 @@ package com.bartlab.agentskills.service
 
 import org.yaml.snakeyaml.Yaml
 
+/**
+ * Skill metadata extracted from YAML frontmatter.
+ *
+ * @property name Skill name
+ * @property description Skill description
+ * @property version Skill version
+ * @property license License
+ * @property compatibility Compatibility
+ * @property allowedTools Allowed tools
+ * @property metadata Additional metadata
+ */
 data class SkillYamlMetadata(
     val name: String?,
     val description: String?,
@@ -12,27 +23,26 @@ data class SkillYamlMetadata(
     val metadata: Map<String, String>
 )
 
+/**
+ * YAML frontmatter parser for SKILL.md files.
+ *
+ * Extracts metadata from the block between `---` markers at the beginning of the file.
+ */
 class SkillYamlParser {
     private val yaml = Yaml()
 
+    /**
+     * Parses YAML frontmatter from SKILL.md content.
+     *
+     * @param content Full content of the SKILL.md file
+     * @return Skill metadata or null if frontmatter is missing
+     */
     fun parseFrontMatter(content: String): SkillYamlMetadata? {
         val block = extractYamlBlock(content) ?: return null
         val data = loadMap(block)
 
-        val allowedTools = when (val rawTools = data["allowed-tools"]) {
-            is List<*> -> rawTools.mapNotNull { it?.toString()?.trim() }.filter { it.isNotBlank() }
-            is String -> rawTools.split(Regex("\\s+")).filter { it.isNotBlank() }
-            else -> emptyList()
-        }
-
-        val metadata = when (val rawMetadata = data["metadata"]) {
-            is Map<*, *> -> rawMetadata.mapNotNull { (key, value) ->
-                val name = key?.toString()?.trim()
-                val rawValue = value?.toString()?.trim()
-                if (!name.isNullOrBlank() && rawValue != null) name to rawValue else null
-            }.toMap()
-            else -> emptyMap()
-        }
+        val allowedTools = parseAllowedTools(data["allowed-tools"])
+        val metadata = parseMetadata(data["metadata"])
 
         return SkillYamlMetadata(
             name = data["name"]?.toString()?.trim(),
@@ -44,7 +54,28 @@ class SkillYamlParser {
             metadata = metadata
         )
     }
+    
+    private fun parseAllowedTools(raw: Any?): List<String> = when (raw) {
+        is List<*> -> raw.mapNotNull { it?.toString()?.trim() }.filter { it.isNotBlank() }
+        is String -> raw.split(Regex("\\s+")).filter { it.isNotBlank() }
+        else -> emptyList()
+    }
+    
+    private fun parseMetadata(raw: Any?): Map<String, String> = when (raw) {
+        is Map<*, *> -> raw.mapNotNull { (key, value) ->
+            val name = key?.toString()?.trim()
+            val rawValue = value?.toString()?.trim()
+            if (!name.isNullOrBlank() && rawValue != null) name to rawValue else null
+        }.toMap()
+        else -> emptyMap()
+    }
 
+    /**
+     * Removes YAML frontmatter from content, leaving only the document body.
+     *
+     * @param content Full content of the SKILL.md file
+     * @return Content without frontmatter
+     */
     fun stripFrontMatter(content: String): String {
         val startIndex = content.indexOf("---")
         if (startIndex == -1) return content.trim()

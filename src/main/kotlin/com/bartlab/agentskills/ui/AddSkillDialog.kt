@@ -1,5 +1,8 @@
 package com.bartlab.agentskills.ui
 
+import com.bartlab.agentskills.AgentSkillsConstants
+import com.bartlab.agentskills.model.AgentPath
+import com.bartlab.agentskills.util.TableUtils
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogWrapper
@@ -91,7 +94,7 @@ class AddSkillDialog(project: Project) : DialogWrapper(project) {
                 val table = JBTable(agentsTableModel).apply {
                     fillsViewportHeight = true
                     val checkCol = columnModel.getColumn(0)
-                    setFixedColumnWidth(checkCol, JBUI.scale(40))
+                    TableUtils.setFixedColumnWidth(checkCol, JBUI.scale(AgentSkillsConstants.CHECKBOX_COLUMN_WIDTH))
                     checkCol.headerRenderer = TableCellRenderer { t, _, _, _, _, _ ->
                         val cb = JBCheckBox("", agentsTableModel.isAllSelected())
                         cb.isOpaque = false
@@ -129,13 +132,7 @@ class AddSkillDialog(project: Project) : DialogWrapper(project) {
     fun shouldCreateSymlinks(): Boolean = createSymlinksCheckbox.isSelected
     fun isGlobalInstall(): Boolean = globalInstallCheckbox.isSelected
 
-    private fun setFixedColumnWidth(column: javax.swing.table.TableColumn, width: Int) {
-        column.minWidth = width
-        column.maxWidth = width
-        column.preferredWidth = width
-    }
-
-    private class AgentsTableModel(val agents: List<SkillScannerService.AgentPath>) : AbstractTableModel() {
+    private class AgentsTableModel(val agents: List<AgentPath>) : AbstractTableModel() {
         val selectedAgents = mutableSetOf<String>()
 
         fun isAllSelected(): Boolean = agents.isNotEmpty() && selectedAgents.size == agents.size

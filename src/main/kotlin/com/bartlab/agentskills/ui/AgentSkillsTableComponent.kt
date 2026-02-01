@@ -1,5 +1,7 @@
 package com.bartlab.agentskills.ui
 
+import com.bartlab.agentskills.AgentSkillsConstants
+import com.bartlab.agentskills.util.TableUtils
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.ActionToolbarPosition
@@ -43,18 +45,26 @@ import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellRenderer
 
+/**
+ * Table component for displaying and managing skills.
+ *
+ * Supports:
+ * - Displaying list of discovered skills
+ * - Selecting skills for "Selected Only" mode
+ * - Adding, deleting, updating skills
+ * - Editing SKILL.md files
+ */
 class AgentSkillsTableComponent(
     private val project: Project,
     private val onRefresh: () -> Unit
 ) : Disposable {
-    private companion object {
-        const val TOOLTIP_MAX_CHARS_PER_LINE = 80
-    }
+    
     private val scanner = project.getService(SkillScannerService::class.java)
     private val manager = project.getService(SkillManagerService::class.java)
     private val model = SkillsTableModel(scanner)
     private val loadingPanelDisposable = Disposer.newDisposable("AgentSkillsTableComponent")
     private val loadingPanel = JBLoadingPanel(BorderLayout(), loadingPanelDisposable)
+    
     private val table = object : JBTable(model) {
         override fun getToolTipText(event: MouseEvent): String? {
             val row = rowAtPoint(event.point)
@@ -71,22 +81,19 @@ class AgentSkillsTableComponent(
                 else -> return null
             }
             if (raw.isBlank()) return null
-            return toHtmlTooltip(raw)
+            return TableUtils.toHtmlTooltip(raw, AgentSkillsConstants.TOOLTIP_MAX_CHARS_PER_LINE)
         }
     }.apply {
         fillsViewportHeight = true
-        preferredScrollableViewportSize = JBUI.size(-1, 200)
-        rowHeight = JBUI.scale(24)
+        preferredScrollableViewportSize = JBUI.size(-1, AgentSkillsConstants.TABLE_VIEWPORT_HEIGHT)
+        rowHeight = JBUI.scale(AgentSkillsConstants.TABLE_ROW_HEIGHT)
         autoResizeMode = JBTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS
         setShowGrid(false)
         tableHeader.reorderingAllowed = false
-
-        // "overflow:hide" for cells on hover (prevent cell expansion)
         setExpandableItemsEnabled(false)
         
-        // Configure the checkbox column width.
         val checkCol = columnModel.getColumn(0)
-        setFixedColumnWidth(checkCol, JBUI.scale(40))
+        TableUtils.setFixedColumnWidth(checkCol, JBUI.scale(AgentSkillsConstants.CHECKBOX_COLUMN_WIDTH))
         checkCol.headerRenderer = TableCellRenderer { t, _, _, _, _, _ ->
             val cb = JBCheckBox("", this@AgentSkillsTableComponent.model.isAllSelected())
             cb.isOpaque = false
@@ -112,8 +119,8 @@ class AgentSkillsTableComponent(
 
         // Version column - make it narrower and add a loader
         val versionCol = columnModel.getColumn(2)
-        versionCol.preferredWidth = JBUI.scale(80)
-        versionCol.maxWidth = JBUI.scale(120)
+        versionCol.preferredWidth = JBUI.scale(AgentSkillsConstants.VERSION_COLUMN_PREFERRED_WIDTH)
+        versionCol.maxWidth = JBUI.scale(AgentSkillsConstants.VERSION_COLUMN_MAX_WIDTH)
         versionCol.cellRenderer = TableCellRenderer { t, value, isSelected, hasFocus, row, column ->
             val panel = JPanel(BorderLayout(JBUI.scale(4), 0))
             panel.background = if (isSelected) t.selectionBackground else t.background
@@ -349,7 +356,7 @@ class AgentSkillsTableComponent(
         model.setCheckboxesEnabled(enabled)
         val column = table.columnModel.getColumn(0)
         if (enabled) {
-            setFixedColumnWidth(column, JBUI.scale(30))
+            TableUtils.setFixedColumnWidth(column, JBUI.scale(AgentSkillsConstants.CHECKBOX_COLUMN_WIDTH))
         } else {
             column.minWidth = 0
             column.maxWidth = 0
@@ -358,37 +365,6 @@ class AgentSkillsTableComponent(
     }
 
     fun getSelectedSkillNames(): List<String> = model.getSelectedSkillNames()
-
-    private fun toHtmlTooltip(text: String): String {
-        fun escapeHtml(s: String): String = s
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-
-        fun softenUnbreakable(s: String): String = s
-            .replace("/", "/<wbr>")
-            .replace("\\", "\\<wbr>")
-            .replace(".", ".<wbr>")
-            .replace("_", "_<wbr>")
-            .replace("-", "-<wbr>")
-
-        val safe = softenUnbreakable(escapeHtml(text))
-        val lines = buildList {
-            var i = 0
-            while (i < safe.length) {
-                val end = (i + TOOLTIP_MAX_CHARS_PER_LINE).coerceAtMost(safe.length)
-                add(safe.substring(i, end))
-                i = end
-            }
-        }
-        return "<html>${lines.joinToString("<br/>")}</html>"
-    }
-
-    private fun setFixedColumnWidth(column: javax.swing.table.TableColumn, width: Int) {
-        column.minWidth = width
-        column.maxWidth = width
-        column.preferredWidth = width
-    }
 
     private class SkillRow(
         val name: String,
