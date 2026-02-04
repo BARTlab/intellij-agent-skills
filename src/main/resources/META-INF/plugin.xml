@@ -17,11 +17,8 @@
     ]]></description>
 
     <change-notes><![CDATA[
-      Initial release of Agent Skills Manager.
       <ul>
-        <li>Implemented MCP Server (SSE) support.</li>
-        <li>Added automatic skill scanning.</li>
-        <li>Implemented Skill Manager for GitHub repositories.</li>
+        <li>Add support for Junie skills.</li>
       </ul>
     ]]></change-notes>
 

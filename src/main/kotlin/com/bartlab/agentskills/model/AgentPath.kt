@@ -41,6 +41,7 @@ object AgentPathRegistry {
         AgentPath("Gemini CLI", ".gemini/skills", "~/.gemini/skills"),
         AgentPath("GitHub Copilot", ".github/skills", "~/.copilot/skills"),
         AgentPath("Goose", ".goose/skills", "~/.config/goose/skills"),
+        AgentPath("Junie", ".junie/skills", ".junie/skills"),
         AgentPath("Kilo Code", ".kilocode/skills", "~/.kilocode/skills"),
         AgentPath("Kiro CLI", ".kiro/skills", "~/.kiro/skills"),
         AgentPath("MCPJam", ".mcpjam/skills", "~/.mcpjam/skills"),

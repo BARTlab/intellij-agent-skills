@@ -236,7 +236,7 @@ class SkillManagerService(private val project: Project) {
         val priorityDirs = listOf(
             "skills", "skills/.curated", "skills/.experimental", "skills/.system",
             ".agent/skills", ".agents/skills", ".claude/skills", ".cline/skills",
-            ".cursor/skills", ".github/skills", ".roo/skills"
+            ".cursor/skills", ".github/skills", ".roo/skills", ".junie/skills"
         )
 
         for (relDir in priorityDirs) {
