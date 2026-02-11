@@ -8,20 +8,20 @@
 
 ---
 
-## ✨ What does this plugin do?
+## What does this plugin do?
 
 The plugin automates the process of sharing project-specific knowledge with your AI assistant. It scans your project for skill definitions (`SKILL.md` files) and provides them through an MCP interface.
 
 ### Key Features:
-- 🚀 **MCP Server (SSE):** Built-in server supporting connections via Server-Sent Events. No need to run additional terminal processes.
-- 🔍 **Smart Scanning:** Automatically finds skills in folders like `.agents/skills`, `.claude/skills`, `.cursor/skills`, `.roo/skills`, and many others (supports 25+ popular AI agents).
-- 📦 **Skill Manager:** Install ready-to-use toolsets from external repositories (e.g., GitHub) or create your own directly in the IDE.
-- 🔄 **Auto-update:** Keep your skills up to date by updating them from source repositories with a single click.
-- 🛡 **Visibility Control:** Choose exactly which skills are available to the assistant in the current session ("Auto" and "Selected Only" modes).
+- **MCP Server (SSE):** Built-in server supporting connections via Server-Sent Events. No need to run additional terminal processes.
+- **Smart Scanning:** Automatically finds skills in folders like `.agents/skills`, `.claude/skills`, `.cursor/skills`, `.roo/skills`, and many others (supports 25+ popular AI agents).
+- **Skill Manager:** Install ready-to-use toolsets from external repositories (e.g., GitHub) or create your own directly in the IDE.
+- **Auto-update:** Keep your skills up to date by updating them from source repositories with a single click.
+- **Visibility Control:** Choose exactly which skills are available to the assistant in the current session ("Auto" and "Selected Only" modes).
 
 ---
 
-## 🛠 Configuration
+## Configuration
 
 1. **Open Settings:** `Settings → Tools → Agent Skills`.
 2. **Enable Integration:** Ensure the **Enable MCP server** checkbox is active.
@@ -30,7 +30,7 @@ The plugin automates the process of sharing project-specific knowledge with your
 
 ---
 
-## 🔌 Connecting your Assistant
+## Connecting your Assistant
 
 The plugin operates as an SSE server. To connect most modern clients (Claude Desktop, Cursor, Roo Code, Windsurf), use the URL: `http://127.0.0.1:24680/sse`.
 
@@ -60,7 +60,7 @@ The plugin supports several ways to manage skills:
 2. **Install from GitHub:** In settings, click the **+** (Add) button, select **Install** mode, and provide the repository URL or shorthand (e.g., `owner/repo`).
 3. **Initialize:** Select **Init** mode in the added window to create a new skill from a template.
 
-### ✅ Supported Agents & Skill Paths
+### Supported Agents & Skill Paths
 When **Auto** search is enabled (default), the plugin scans both **project-level** and **global** skill directories for each supported agent. This means skills can be discovered either inside the current project or from your user profile.
 
 | Agent | Project path | Global path |
@@ -79,6 +79,7 @@ When **Auto** search is enabled (default), the plugin scans both **project-level
 | Gemini CLI | `.gemini/skills` | `~/.gemini/skills` |
 | GitHub Copilot | `.github/skills` | `~/.copilot/skills` |
 | Goose | `.goose/skills` | `~/.config/goose/skills` |
+| Junie | `.junie/skills` | `-` |
 | Kilo Code | `.kilocode/skills` | `~/.kilocode/skills` |
 | Kiro CLI | `.kiro/skills` | `~/.kiro/skills` |
 | MCPJam | `.mcpjam/skills` | `~/.mcpjam/skills` |
@@ -95,7 +96,7 @@ When **Auto** search is enabled (default), the plugin scans both **project-level
 
 If **Skill search directory** is enabled in settings, the plugin scans only that custom path and skips the default project/global locations above.
 
-### 🔍 Finding Skills
+### Finding Skills
 You can find a directory of community-contributed skills at [**skills.sh**](https://skills.sh/). Copy the repository URL and use the **Installation** feature to add them to your project.
 
 ### SKILL.md Format
@@ -114,7 +115,7 @@ Use the following rules when writing code:
 
 ---
 
-## 💡 Useful Information
+## Useful Information
 
 ### Available MCP Tools
 The assistant gains access to the following tools:
@@ -127,7 +128,7 @@ You have full control over what data is shared with the assistant. Use the **Sel
 
 ---
 
-## 🧪 Build, Test, and Install (Local)
+## Build, Test, and Install (Local)
 
 ### Build the plugin
 ```bash
@@ -153,10 +154,10 @@ You have full control over what data is shared with the assistant. Use the **Sel
 
 ---
 
-## ☕ Support
+## Support
 
 If this plugin helps you in your work, you can support the author:
 
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/bartlab)
 
-Developed with ❤️ by the **B@RT** team.
+Developed with ❤️ by the **B@RT**.
