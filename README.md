@@ -52,7 +52,7 @@ In the IDE menu, select **Tools → Agent Skills List**. This opens a list of av
 
 ---
 
-## 📝 Managing Skills
+## Managing Skills
 
 The plugin supports several ways to manage skills:
 
